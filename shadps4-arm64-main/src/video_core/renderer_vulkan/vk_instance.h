@@ -290,6 +290,25 @@ public:
         return amd_mixed_attachment_samples;
     }
 
+    /// Returns true where VK_NV_coverage_reduction_mode can give each of `color` colour
+    /// samples the coverage of one raster sample of `raster` (TRUNCATE), with a depth buffer of
+    /// `depth` samples (0 for none).
+    bool IsCoverageTruncateSupported(u32 raster, u32 color, u32 depth) const {
+        return std::ranges::any_of(coverage_combinations, [&](const auto& combination) {
+            return combination.coverageReductionMode == vk::CoverageReductionModeNV::eTruncate &&
+                   static_cast<u32>(combination.rasterizationSamples) == raster &&
+                   (static_cast<u32>(combination.colorSamples) & color) != 0 &&
+                   (depth == 0 ? !combination.depthStencilSamples
+                               : (static_cast<u32>(combination.depthStencilSamples) & depth) != 0);
+        });
+    }
+
+    /// Returns true if VK_NV_framebuffer_mixed_samples is used: a colour target can have fewer
+    /// samples than the depth buffer it is drawn with.
+    bool IsNvMixedSamplesSupported() const {
+        return nv_framebuffer_mixed_samples;
+    }
+
     /// Returns true when geometry shaders are supported by the device
     bool IsGeometryStageSupported() const {
         return features.geometryShader;
@@ -586,6 +605,8 @@ private:
     bool amd_gcn_shader{};
     bool amd_shader_trinary_minmax{};
     bool nv_framebuffer_mixed_samples{};
+    bool coverage_reduction{};
+    std::vector<vk::FramebufferMixedSamplesCombinationNV> coverage_combinations;
     bool amd_mixed_attachment_samples{};
     bool push_descriptor{};
     bool vertex_attribute_divisor{};

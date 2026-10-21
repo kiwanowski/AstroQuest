@@ -68,16 +68,68 @@ function Save-Setting([string]$key, [string]$value) {
 }
 Read-Settings
 
+# --- a newer release --------------------------------------------------------------------------
+# The version of AstroQuest this is: what a release has in version.txt next to this file, ""
+# in a copy made from the source.
+function Get-OwnVersion {
+    $file = Join-Path $here "version.txt"
+    if (-not [System.IO.File]::Exists($file)) { return "" }
+    return ([System.IO.File]::ReadAllText($file)).Trim()
+}
+# "0.22", "v0.21.1" and the like as something to compare; $null for anything else.
+function ConvertTo-ReleaseVersion([string]$text) {
+    if ($text -notmatch '^v?(\d+)\.(\d+)(\.(\d+))?$') { return $null }
+    $patch = 0
+    if ($Matches[4]) { $patch = [int]$Matches[4] }
+    return New-Object System.Version([int]$Matches[1], [int]$Matches[2], $patch)
+}
+# Asks GitHub for the latest release while the rest goes on (update_check=0: not at all; a
+# copy made from the source does not ask). What it says is told before the game starts.
+function Start-UpdateCheck {
+    if ((Setting "update_check" "1") -eq "0" -or $null -eq (ConvertTo-ReleaseVersion (Get-OwnVersion))) { return $null }
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        Add-Type -AssemblyName System.Net.Http
+        $client = New-Object System.Net.Http.HttpClient
+        $client.Timeout = [TimeSpan]::FromSeconds(10)
+        $client.DefaultRequestHeaders.UserAgent.ParseAdd("AstroQuest-launcher")
+        $client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json")
+        return $client.GetStringAsync("https://api.github.com/repos/bigmak94/AstroQuest/releases/latest")
+    } catch { return $null }
+}
+# The line to tell of a newer release than this one, "" where there is none (or no answer
+# within `wait` milliseconds).
+function Get-UpdateNotice($request, [int]$wait = 1500) {
+    if ($null -eq $request) { return "" }
+    try {
+        if (-not $request.Wait($wait)) { return "" }
+        $tag = [string](ConvertFrom-Json $request.Result).tag_name
+    } catch { return "" }
+    $latest = ConvertTo-ReleaseVersion $tag
+    $own = ConvertTo-ReleaseVersion (Get-OwnVersion)
+    if ($null -eq $latest -or $null -eq $own -or $latest -le $own) { return "" }
+    return ("AstroQuest " + $tag.TrimStart("v") + " is out (this is " + (Get-OwnVersion) + "): https://github.com/bigmak94/AstroQuest/releases/latest")
+}
+$updateRequest = Start-UpdateCheck
+
 # The sizes an eye can be drawn at: the console's smaller ones (for a headset with fewer pixels,
 # a Rift S or a Rift), its largest (1440x1536, what a PlayStation 4 Pro draws) and larger ones
 # of that shape.
-$widths = @(816, 960, 1200, 1440, 1800, 2160, 2520, 2880, 3240, 3600)
+$widths = @(816, 960, 1200, 1440, 1800, 2160, 2520, 2880, 3240, 3600, 3960, 4320)
 $consoleHeights = @{ 816 = 870; 960 = 1080; 1200 = 1280 }
 function EyeHeight([int]$width) {
     if ($consoleHeights.ContainsKey($width)) { return $consoleHeights[$width] }
     return [int]([math]::Round(1536.0 * $width / 1440 / 8) * 8)
 }
-$caps = @(120, 90, 80, 72, 60, 45, 40, 36, 30)
+# full: a new frame for every refresh of the headset, as many as the PC can make.
+$caps = @("full", "120", "90", "80", "72", "60", "45", "40", "36", "30")
+# What fps= says: full, or a number of frames a second (10 or more); full where it is neither.
+function Get-FpsSetting {
+    $value = (Setting "fps" "full").Trim().ToLower()
+    $number = 0.0
+    if ($value -ne "full" -and [double]::TryParse($value, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$number) -and $number -ge 10) { return $value }
+    return "full"
+}
 # The languages the game has, as Windows names them.
 $gameLanguages = @("en-US", "en-GB", "fr-FR", "fr-CA", "es-ES", "es-419", "de-DE", "it-IT", "nl-NL",
                    "pt-PT", "pt-BR", "ru-RU", "pl-PL", "tr-TR", "sv-SE", "nb-NO", "da-DK", "fi-FI",
@@ -110,7 +162,7 @@ function Get-VrInstructions([string]$runtime) {
     if ($runtime -match 'steamvr|steamxr') {
         return @(
             "Start SteamVR and check that the headset is ready (an Index: with its base stations). Virtual Desktop is not needed."
-            "Set the headset to 120 Hz in SteamVR's Video settings for the game's own 60 frames a second (90 Hz gives 45)."
+            "Choose the headset's refresh rate in SteamVR's Video settings: the game makes a frame for every refresh (Full in the window at the start), or 60 frames a second at 120 Hz."
             "The DualSense: connect it to THIS PC by USB or Bluetooth. It keeps its motion sensors, touchpad and rumble."
             "If launching through a Steam shortcut, disable Steam Input for that shortcut so the emulator can read the DualSense."
             "SteamVR does not track bare hands: the gamepad in the game stays in front of you and turns with its own sensors."
@@ -728,7 +780,7 @@ function Show-Menu {
 
     # Frame rate.
     $label = New-Object System.Windows.Forms.Label
-    $label.Text = "Frames a second, at most"
+    $label.Text = "Frames a second"
     $label.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
     $label.SetBounds(16, $y, 250, 20)
     $form.Controls.Add($label)
@@ -753,20 +805,19 @@ function Show-Menu {
     $fps.Name = "fps"
     $fps.DropDownStyle = "DropDownList"
     foreach ($cap in $caps) {
-        $text = "$cap"
-        if ($cap -eq 60) { $text = "60 (the console's own)" }
+        $text = "at most $cap"
+        if ($cap -eq "full") { $text = "Full: the headset's refresh rate" }
+        if ($cap -eq "60") { $text = "at most 60 (the console's own)" }
         [void]$fps.Items.Add($text)
     }
-    $fps.SetBounds(16, $y, 200, 26)
-    $current = 0
-    [void][int]::TryParse((Setting "fps" "60"), [ref]$current)
-    $index = [array]::IndexOf($caps, $current)
-    if ($index -lt 0) { $index = [array]::IndexOf($caps, 60) }
+    $fps.SetBounds(16, $y, 250, 26)
+    $index = [array]::IndexOf($caps, (Get-FpsSetting))
+    if ($index -lt 0) { $index = 0 }
     $fps.SelectedIndex = $index
     $form.Controls.Add($fps)
     $y += 32
     $fpsText = New-Object System.Windows.Forms.Label
-    $fpsText.Text = "A frame lasts a whole number of the headset's refreshes: at 120 Hz, 120, 60, 40 or 30 frames a second; at 90 Hz, 90, 45 or 30; at 80 Hz, 80 or 40. Choose 120 Hz for 60 frames a second. Set it in SteamVR Video settings for an Index, or Virtual Desktop Streaming settings for a Quest."
+    $fpsText.Text = "Full: a new frame for every refresh of the headset (90 at 90 Hz), as many as the PC can make. With a limit a frame lasts a whole number of refreshes: at 120 Hz, 120, 60, 40 or 30; at 90 Hz, 90, 45 or 30. If Full judders, choose 60 at 120 Hz. The refresh rate is set in SteamVR's Video settings or Virtual Desktop's Streaming settings."
     $fpsText.SetBounds(16, $y, 530, 84)
     $form.Controls.Add($fpsText)
     $y += 88
@@ -939,9 +990,14 @@ if ($fovSetting -ne "100") { $env:SHADPS4_VR_FOV = $fovSetting }
 # fov_of: what fov is a percent of. headset: what the headset being worn shows, all of it at 100
 # (the emulator asks the headset as it starts). psvr: a PlayStation VR's, as the game was made.
 if ((Setting "fov_of" "headset") -ne "psvr") { $env:SHADPS4_VR_FOV_OF = "headset" }
-# fps: the most frames a second. (pace, the older way to say it: refreshes of the headset a
-# frame is given, 1 or more.)
-$env:SHADPS4_VR_FPS_CAP = Setting "fps" "60"
+# fps: full, a new frame for every refresh of the headset; or the most frames a second. (pace,
+# the older way to say it: refreshes of the headset a frame is given, 1 or more.)
+if ((Get-FpsSetting) -eq "full") {
+    $env:SHADPS4_VR_PACE = "1"
+    $env:SHADPS4_VR_FASTEST_PACE = "1"
+} else {
+    $env:SHADPS4_VR_FPS_CAP = Get-FpsSetting
+}
 $pace = Setting "pace" ""
 if ($pace -eq "1") { $env:SHADPS4_VR_FASTEST_PACE = "1"; $env:SHADPS4_VR_FPS_CAP = "" } elseif ($pace -ne "" -and $pace -ne "2") { $env:SHADPS4_VR_PACE = $pace }
 if ((Setting "headset" "1") -eq "0") { $env:SHADPS4_OPENXR = "0" }
@@ -959,7 +1015,8 @@ foreach ($pair in $extraEnv) {
 # --- what is there ----------------------------------------------------------------------------
 Say "ASTRO BOT Rescue Mission - PC VR" "Cyan"
 if ($env:SHADPS4_TITLE_EYE_WIDTH) {
-    Say ("Each eye up to " + $env:SHADPS4_TITLE_EYE_WIDTH + " x " + (EyeHeight ([int]$env:SHADPS4_TITLE_EYE_WIDTH)) + ", at most " + $env:SHADPS4_VR_FPS_CAP + " frames a second.")
+    $rate = $(if ($env:SHADPS4_VR_PACE -eq "1") { "a frame for every refresh of the headset." } else { "at most " + $env:SHADPS4_VR_FPS_CAP + " frames a second." })
+    Say ("Each eye up to " + $env:SHADPS4_TITLE_EYE_WIDTH + " x " + (EyeHeight ([int]$env:SHADPS4_TITLE_EYE_WIDTH)) + ", " + $rate)
 }
 $runtime = ""
 if ($env:XR_RUNTIME_JSON) {
@@ -996,12 +1053,17 @@ Say "Where the game wants you to blow: into the headset's microphone, or hold th
 Say "(X and Y together on VR controllers)."
 Say "With VR controllers, or a gamepad that has no touchpad, the touchpad is on buttons:"
 Say "  right trigger (R2): press it and hold (water, guns)"
-Say "  right grip (R1): swipe forward (hook, throwing stars, chests)"
+Say "  right grip (R1): swipe forward (hook, throwing stars, chests); R1 does it on a DualSense too"
 Say "  left trigger (L2): pull back, let go to shoot (the catapult at the end of a level)"
 Say "  right stick: a finger on it, for anything else"
 Say "Both sticks of VR controllers pressed in reset the view."
 Say "Close the game's window to quit."
 Say ""
+$notice = Get-UpdateNotice $updateRequest
+if ($notice -ne "") {
+    Say $notice "Green"
+    Say ""
+}
 # The emulator asks Windows for about 14 GB at once (the console's memory, and what the larger
 # pictures take). Where Windows cannot promise that much, the emulator stops as it starts.
 $memoryShort = $false

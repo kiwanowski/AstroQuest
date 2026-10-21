@@ -736,13 +736,30 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
     // after three. For that the thread looks at the queue several times per refresh, without
     // ever waiting for the GPU: the refresh signals themselves stay on time.
     // SHADPS4_EARLY_FLIP=0 goes back to flipping at refreshes only.
-    static constexpr u32 LooksPerRefresh = 8;
+    // On Windows the looks are 32 a refresh, timed by a high-resolution waitable timer at the
+    // headset's own rate (which the runtime may change after the start): a frame the GPU has
+    // just finished waits a quarter of a millisecond or so for its flip, not one or two.
+    // SHADPS4_VR_PRECISE_PACING=0 goes back to eight, timed as everywhere else. After
+    // evertec82/AstroQuest.
     const char* early_setting = std::getenv("SHADPS4_EARLY_FLIP");
     const bool early_flips =
         vr.IsHeadsetConnected() && !(early_setting != nullptr && early_setting[0] == '0');
+#ifdef _WIN32
+    const char* precise_setting = std::getenv("SHADPS4_VR_PRECISE_PACING");
+    const bool precise_pacing =
+        early_flips && !(precise_setting != nullptr && precise_setting[0] == '0');
+#else
+    constexpr bool precise_pacing = false;
+#endif
+    const u32 LooksPerRefresh = precise_pacing ? 32 : 8;
     HeadsetRefreshClock refresh_clock{vblank_period, LooksPerRefresh};
 
-    Common::AccurateTimer timer{early_flips ? vblank_period / LooksPerRefresh : vblank_period};
+    Common::AccurateTimer timer{early_flips ? vblank_period / LooksPerRefresh : vblank_period,
+                                precise_pacing};
+    if (early_flips) {
+        LOG_INFO(Lib_VideoOut, "Finished frames are looked for {} times a refresh{}",
+                 LooksPerRefresh, precise_pacing ? ", by a high-resolution timer" : "");
+    }
 
     const auto receive_request = [this] -> Request {
         std::scoped_lock lk{mutex};
@@ -781,6 +798,13 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
     u32 pace = 2;
 
     while (!token.stop_requested()) {
+        if (precise_pacing) {
+            const float rate = vr.HeadsetRefreshRate();
+            if (rate >= 30.0f && rate <= 400.0f) {
+                timer.SetInterval(std::chrono::nanoseconds{
+                    static_cast<s64>(1e9 / (static_cast<double>(rate) * LooksPerRefresh))});
+            }
+        }
         timer.Start();
 
         if (DebugState.IsGuestThreadsPaused()) {
@@ -793,7 +817,7 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
             if (const auto request = receive_finished_hmd_frame()) {
                 flip_hmd_frame(request);
             }
-            // Eight looks a refresh is also often enough to tell how busy the GPU is.
+            // Eight looks a refresh or more are also often enough to tell how busy the GPU is.
             Vulkan::FrameStats::GpuLook(presenter->IsGpuBusy());
             // A title that takes more than two refreshes of the display for a frame is on a
             // pace of its own: its frames are shown for two refreshes or for three as they

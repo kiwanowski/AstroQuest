@@ -383,6 +383,11 @@ build is one the emulator knows from inside (`core.log`: "CUSA12431 in a build k
 inside"). And the last lines before a crash reach `core.log`: they waited in the log's queue
 and were lost when the emulator stopped.
 
+**App 0.23 (2026-10-21): R1 swipes on a DualSense too.** With a DualSense or DualShock 4,
+whose own touchpad the game is given, R1 now also swipes forward once (issue #43): the throwing
+stars of the last boss want faster swipes than a thumb makes on the pad. A finger on the pad
+comes first. (The rest of 0.23 is the PC's: see `README-PC-VR.md`.)
+
 **App 0.8 (2026-10-03)**, after the fourth session (levels 1-1 to 1-3 played, the game stopped
 on entering 1-4 twice):
 
@@ -546,7 +551,9 @@ two things the game is built around, which are made up for:
   - **R2, the right trigger: the pad pressed**, for as long as the trigger is pulled. The
     water cannon and the machine gun fire that way.
   - **R1: a swipe forward**, once for each press. That shoots the hook, throws the stars,
-    opens the chests.
+    opens the chests. (R1 does that on a DualSense or DualShock 4 too, whose own touchpad
+    the game is given: the stars of the last boss want swipes faster than a thumb makes
+    them, issue #43.)
   - **L2, the left trigger: a pull back**, held while the trigger is and let go when it is.
     That is the catapult at the end of every level (point the controller at the goal: the
     game only shoots within 25 degrees of it), and it pulls on the hook's rope.

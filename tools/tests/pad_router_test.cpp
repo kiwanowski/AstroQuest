@@ -582,19 +582,44 @@ int main() {
         Check(bench.router.Look().options_presses == before + 1, "a press of OPTIONS is counted once");
     }
     {
-        // A gamepad with a touchpad of its own keeps its buttons to itself.
+        // A gamepad with a touchpad of its own keeps its triggers to itself; R1 swipes forward
+        // on it too (issue #43: the throwing stars want faster swipes than a thumb makes).
         Bench bench;
         bench.router.SetGamepadConnected(true, true, 0.0);
         bench.router.SetPlaying(true, 0.0);
         Check(!bench.router.Look().gesture_buttons, "a gamepad with a touchpad needs no buttons for it");
         GamepadState pad;
-        pad.buttons = Button::R2 | Button::R1 | Button::L2;
+        pad.buttons = Button::R2 | Button::L2;
         pad.right_trigger = 1.0f;
         pad.left_trigger = 1.0f;
         bench.router.SetGamepad(pad, bench.time);
         bench.Pass(0.5);
-        Check(bench.out.pad.buttons == (Button::R2 | Button::R1 | Button::L2) && !bench.out.pad.touch_down,
-              "its triggers and shoulder buttons are only that");
+        Check(bench.out.pad.buttons == (Button::R2 | Button::L2) && !bench.out.pad.touch_down,
+              "its triggers are only that");
+        pad = {};
+        bench.router.SetGamepad(pad, bench.time);
+        bench.Pass(0.2);
+        pad.buttons = Button::R1;
+        bench.router.SetGamepad(pad, bench.time);
+        bench.Pass(0.03);
+        Check(bench.out.pad.buttons == Button::R1 && bench.out.pad.touch_down && bench.out.pad.touch_y == 863,
+              "its R1 swipes forward (and is still R1)");
+        bench.Pass(0.5);
+        Check(!bench.out.pad.touch_down && bench.out.pad.touch_y == 129, "to the far edge and off");
+        pad.buttons = Button::R1;
+        pad.touch_down = true;
+        pad.touch_x = 0.25f;
+        pad.touch_y = 0.75f;
+        bench.router.SetGamepad(pad, bench.time);
+        bench.Pass(0.2);
+        pad.buttons = 0;
+        bench.router.SetGamepad(pad, bench.time);
+        bench.Pass(0.2);
+        pad.buttons = Button::R1;
+        bench.router.SetGamepad(pad, bench.time);
+        bench.Pass(0.03);
+        Check(bench.out.pad.touch_down && bench.out.pad.touch_x == 480,
+              "a real finger on its pad comes first");
     }
     {
         // The view turns by steps: the grip that has no other meaning held, the right stick

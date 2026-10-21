@@ -401,12 +401,15 @@ private:
             read.finger_x = g.touch_x;
             read.finger_y = g.touch_y;
             read.turn_button = PadButton::L1;
+            // R1 swipes forward once on every gamepad, one with a touchpad of its own too: the
+            // throwing stars of the last boss want swipes faster than a thumb makes them on the
+            // pad (issue #43). A real finger on the pad still comes first.
+            read.gestures.swipe = (g.buttons & PadButton::R1) != 0;
+            read.swipe_button = PadButton::R1;
             if (!gamepad_touchpad) {
                 read.gestures.press = g.right_trigger > 0.5f;
-                read.gestures.swipe = (g.buttons & PadButton::R1) != 0;
                 read.gestures.pull = g.left_trigger > 0.5f;
                 read.press_button = PadButton::R2;
-                read.swipe_button = PadButton::R1;
                 read.pull_button = PadButton::L2;
             }
         }

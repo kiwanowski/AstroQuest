@@ -13,6 +13,7 @@
 #include "common/signal_context.h"
 #include "common/types.h"
 #include "core/libraries/kernel/threads/exception.h"
+#include "core/linker.h"
 #include "core/signals.h"
 #ifdef SHADPS4_ENABLE_FEX_GUEST_CPU
 #include "core/fex/fex_guest_engine.h"
@@ -128,6 +129,66 @@ static std::string CppExceptionText(const EXCEPTION_RECORD& record) {
     return {};
 }
 
+/// "eboot.bin + 0xeb2bdd" for an address in one of the title's modules, "" elsewhere.
+static std::string GuestPlace(u64 address) {
+    const auto* module = Common::Singleton<Core::Linker>::Instance()->FindByAddress(address);
+    if (module == nullptr) {
+        return {};
+    }
+    return fmt::format("{} + {:#x}", module->name, address - module->GetBaseAddress());
+}
+
+/// What a fault that nobody handles leaves for finding its place again: what was read or
+/// written where, the registers, and the title's calls its stack holds (the values on it that
+/// are addresses in the title's code, as module + offset). The host's own walk of the stack
+/// stops where the title's code is, which has no unwind data for it (issue #40).
+static void LogFault(const EXCEPTION_POINTERS* pExp) {
+#ifdef ARCH_X86_64
+    const EXCEPTION_RECORD& record = *pExp->ExceptionRecord;
+    const CONTEXT& context = *pExp->ContextRecord;
+    if (record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record.NumberParameters >= 2) {
+        const ULONG_PTR kind = record.ExceptionInformation[0];
+        LOG_CRITICAL(Debug, "  {} at {:#x}",
+                     kind == 0   ? "a read"
+                     : kind == 1 ? "a write"
+                                 : "a jump to code that cannot run",
+                     record.ExceptionInformation[1]);
+    }
+    LOG_CRITICAL(Debug,
+                 "  rax {:#x} rbx {:#x} rcx {:#x} rdx {:#x} rsi {:#x} rdi {:#x} rbp {:#x} "
+                 "rsp {:#x}",
+                 context.Rax, context.Rbx, context.Rcx, context.Rdx, context.Rsi, context.Rdi,
+                 context.Rbp, context.Rsp);
+    LOG_CRITICAL(Debug,
+                 "  r8 {:#x} r9 {:#x} r10 {:#x} r11 {:#x} r12 {:#x} r13 {:#x} r14 {:#x} "
+                 "r15 {:#x}",
+                 context.R8, context.R9, context.R10, context.R11, context.R12, context.R13,
+                 context.R14, context.R15);
+    // Up to 8 KB of the stack, as far as it goes.
+    MEMORY_BASIC_INFORMATION stack{};
+    if (VirtualQuery(reinterpret_cast<const void*>(context.Rsp), &stack, sizeof(stack)) == 0 ||
+        stack.State != MEM_COMMIT) {
+        return;
+    }
+    const u64 end = std::min<u64>(reinterpret_cast<u64>(stack.BaseAddress) + stack.RegionSize,
+                                  context.Rsp + 8192);
+    u32 found = 0;
+    for (u64 at = context.Rsp; at + 8 <= end && found < 24; at += 8) {
+        const u64 value = *reinterpret_cast<const u64*>(at);
+        std::string place = GuestPlace(value);
+        MEMORY_BASIC_INFORMATION code{};
+        if (place.empty() ||
+            VirtualQuery(reinterpret_cast<const void*>(value), &code, sizeof(code)) == 0 ||
+            (code.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
+                             PAGE_EXECUTE_WRITECOPY)) == 0) {
+            continue;
+        }
+        LOG_CRITICAL(Debug, "  on the stack at rsp+{:#x}: {}", at - context.Rsp, place);
+        ++found;
+    }
+#endif
+}
+
 static LONG WINAPI SignalHandler(EXCEPTION_POINTERS* pExp) noexcept {
     const auto* signals = Signals::Instance();
     DWORD code = 0;
@@ -192,7 +253,12 @@ static LONG WINAPI SignalHandler(EXCEPTION_POINTERS* pExp) noexcept {
         }
         Common::Log::Flush();
     } else {
-        LOG_CRITICAL(Debug, "Unhandled Exception code {:#x} at {}", code, address);
+        const std::string place = GuestPlace(reinterpret_cast<u64>(address));
+        LOG_CRITICAL(Debug, "Unhandled Exception code {:#x} at {}{}{}", code, address,
+                     place.empty() ? "" : ", ", place);
+        if (pExp != nullptr && pExp->ExceptionRecord != nullptr && pExp->ContextRecord != nullptr) {
+            LogFault(pExp);
+        }
         LogCallers(true);
         Common::Singleton<Core::Emulator>::Instance()->Shutdown();
         Common::Log::Flush();

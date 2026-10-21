@@ -45,6 +45,8 @@ Source: https://github.com/maxton/LibOrbisPkg (release v0.2).
 EOF
 # The settings file as documented: what the launcher's window saved here is left out.
 sed '/^[a-z_]*=/d' "$root/pc-vr/settings.txt" > "$pc/pc-vr/settings.txt"
+# What the launcher tells a newer release by.
+echo "$version" > "$pc/pc-vr/version.txt"
 # The emulator's settings as the play folder has them, with everything that names this PC's
 # folders or devices back at its default.
 "$python" - "$(cygpath -m "$root/pc-vr/user/config.json")" \
@@ -85,8 +87,10 @@ its own. https://github.com/bigmak94/AstroQuest
    the game is. Keep this folder's path short, e.g. C:\Games\AstroQuest: the emulator cannot
    open the game's files whose full path would be longer than 260 characters.
 2. Virtual Desktop: install the Streamer on this PC and choose VDXR as the OpenXR runtime in
-   its Options. In the headset, set Virtual Desktop's frame rate to 120 (Streaming settings).
-   (With SteamVR instead: start it and see that the headset is ready.)
+   its Options. In the headset, set Virtual Desktop's frame rate to 90 or 120 (Streaming
+   settings): the game makes a frame for every refresh, as many as the PC can. (If that
+   judders, choose 60 frames a second at 120 in the launcher's window.) (With SteamVR
+   instead: start it and see that the headset is ready.)
 3. Connect the DualSense to this PC (USB cable, or Bluetooth paired with the PC, not with the
    headset). The headset's own controllers play too: without a gamepad, and with one
    whenever they were used after it.
@@ -99,6 +103,7 @@ In the game: hold the controller where the outline is on the first screen; look 
 and press X to choose it; hold OPTIONS for a second to reset the view. With the headset's
 controllers or a gamepad without a touchpad: right trigger presses the touchpad, right grip
 (R1) swipes forward, left trigger pulls back and lets go (the catapult at the end of a level).
+R1 swipes forward on a DualSense too (the throwing stars).
 To turn round without turning yourself: hold L1 (the headset's controllers: the left grip)
 and flick the right stick to a side.
 Settings are in pc-vr\settings.txt, the log in pc-vr\user\log\shad_log.txt, saves in

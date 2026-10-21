@@ -280,22 +280,25 @@ void GameController::UpdateStickTouch() {
     }
     const double now =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    // A gamepad that has no touchpad at all also has buttons for what such a title wants
-    // done on one (see PadGestures): the right trigger presses the pad for as long as it is
-    // pulled, the right shoulder button swipes forward once, the left trigger pulls back and
-    // lets go when it is let go. The title has no use for those buttons in play, and is
-    // still told of them. (Not while the PS button is held: it gives them other meanings.)
+    // Buttons for what such a title wants done on the touchpad (see PadGestures): the right
+    // shoulder button swipes forward once, on every gamepad (a DualSense's too: the throwing
+    // stars of the last boss want swipes faster than a thumb makes them on the pad, issue
+    // #43). A gamepad that has no touchpad at all also has the right trigger press the pad
+    // for as long as it is pulled, and the left trigger pull back and let go when it is let
+    // go. The title has no use for those buttons in play, and is still told of them. (Not
+    // while the PS button is held: it gives them other meanings.)
     PadGestures::Touch made{};
-    if (SDL_GetNumGamepadTouchpads(m_sdl_gamepad) == 0) {
+    {
+        const bool touchpad = SDL_GetNumGamepadTouchpads(m_sdl_gamepad) != 0;
         PadGestures::Controls controls;
         if (!SDL_GetGamepadButton(m_sdl_gamepad, SDL_GAMEPAD_BUTTON_GUIDE)) {
             static constexpr s16 Pulled = 16384;
-            controls.press =
-                SDL_GetGamepadAxis(m_sdl_gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > Pulled;
             controls.swipe =
                 SDL_GetGamepadButton(m_sdl_gamepad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
-            controls.pull =
-                SDL_GetGamepadAxis(m_sdl_gamepad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > Pulled;
+            controls.press = !touchpad && SDL_GetGamepadAxis(m_sdl_gamepad,
+                                                             SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > Pulled;
+            controls.pull = !touchpad && SDL_GetGamepadAxis(m_sdl_gamepad,
+                                                            SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > Pulled;
         }
         made = m_gestures.Update(now, controls);
         if (made.pressed != m_gesture_press) {

@@ -127,6 +127,42 @@ GraphicsPipeline::GraphicsPipeline(
         };
     }
 
+    // The title draws into colour targets of one sample with a depth buffer of more, which
+    // NVIDIA's mixed samples keep. There a colour sample counts as covered wherever any raster
+    // sample it stands for is, so the pixels along an edge two triangles share are drawn into
+    // by both: where the title blends (the glows and texts of its menus, two triangles a quad)
+    // each quad shows a bright line along its diagonal, one in each eye. A blending pipeline
+    // has each colour sample take the coverage of one raster sample only (TRUNCATE), or, where
+    // the driver cannot, keeps the first raster sample of its one colour sample. After
+    // evertec82/AstroQuest. (On a copy: the state the pipeline cache keeps holds no pointers.)
+    auto multisampling = sdata.multisampling;
+    const vk::SampleMask first_sample = 1;
+    const vk::PipelineCoverageReductionStateCreateInfoNV truncate = {
+        .coverageReductionMode = vk::CoverageReductionModeNV::eTruncate,
+    };
+    const u32 raster_samples = static_cast<u32>(multisampling.rasterizationSamples);
+    const u32 target_samples = key.color_samples[0];
+    if (instance.IsNvMixedSamplesSupported() && key.num_color_attachments == 1 &&
+        key.blend_controls[0].enable && target_samples != 0 && raster_samples > target_samples) {
+        const bool depth = key.z_format != AmdGpu::DepthBuffer::ZFormat::Invalid ||
+                           key.stencil_format != AmdGpu::DepthBuffer::StencilFormat::Invalid;
+        if (instance.IsCoverageTruncateSupported(raster_samples, target_samples,
+                                                 depth ? key.depth_samples : 0)) {
+            multisampling.pNext = &truncate;
+        } else if (target_samples == 1) {
+            multisampling.pSampleMask = &first_sample;
+        }
+        static bool told = false;
+        if (!std::exchange(told, true)) {
+            LOG_INFO(Render_Vulkan,
+                     "Blending into {} colour sample(s) of {} raster samples: {}", target_samples,
+                     raster_samples,
+                     multisampling.pNext != nullptr       ? "each takes one raster sample's coverage"
+                     : multisampling.pSampleMask != nullptr ? "the first raster sample only"
+                                                            : "as the driver has it");
+        }
+    }
+
     const vk::PipelineViewportDepthClipControlCreateInfoEXT clip_control = {
         .negativeOneToOne = key.clip_space == AmdGpu::ClipSpace::MinusWToW,
     };
@@ -376,7 +412,7 @@ GraphicsPipeline::GraphicsPipeline(
         .pTessellationState = &tessellation_state,
         .pViewportState = &viewport_info,
         .pRasterizationState = &raster_chain.get(),
-        .pMultisampleState = &sdata.multisampling,
+        .pMultisampleState = &multisampling,
         .pDepthStencilState =
             !instance.IsExtendedDynamicState3Supported() ? &depth_stencil_info : nullptr,
         .pColorBlendState = &color_blending,

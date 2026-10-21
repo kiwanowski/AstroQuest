@@ -27,6 +27,8 @@
 #include "common/polyfill_thread.h"
 #include "common/singleton.h"
 #include "common/thread.h"
+#include "core/known_title.h"
+#include "core/vr/late_frame_wait.h"
 #include "core/vr/openxr_host.h"
 #include "input/controller.h"
 #include "input/pad_source.h"
@@ -416,6 +418,8 @@ struct OpenXrHost::Impl {
 
     // The title's frames on their way here.
     std::mutex slot_mutex;
+    /// Raised (under slot_mutex) when a frame is ready, for a wait for one that is late.
+    LateFrameSignal frame_ready;
     std::array<Slot, NumSlots> slots;
     s32 latest{-1};
     u32 next_slot{};
@@ -503,6 +507,10 @@ struct OpenXrHost::Impl {
     u32 display_frames{};
     u32 reported_delivered{};
     u32 copied_frames{};
+    /// Pictures a frame that came a little late was still in time for, and waits for one that
+    /// ended without it.
+    u32 late_frames{};
+    u32 late_waits_missed{};
     u32 head_tracked_frames{};
     u32 palm_samples{};
     float palm_distance{};
@@ -1794,7 +1802,30 @@ struct OpenXrHost::Impl {
             UpdatePad(pose_time);
 
             FreeCopied();
-            if (const s32 index = TakeFrame(); index >= 0) {
+            s32 taken = TakeFrame();
+            // Where the title makes a frame for every refresh, one that is not there yet is
+            // often a fraction of a millisecond from it: it is waited for a little (3 ms from
+            // when the runtime let go, SHADPS4_XR_LATE_WAIT_MS, 0 for not at all, 6 at most)
+            // rather than the last picture shown again. (No lock of a queue is held meanwhile.)
+            // After evertec82/AstroQuest (from elliotttate/AstroQuest).
+            static const float late_wait_ms =
+                std::clamp(EnvFloat("SHADPS4_XR_LATE_WAIT_MS", 3.0f), 0.0f, 6.0f);
+            if (taken < 0 && late_wait_ms > 0.0f && have_frame &&
+                frame_state.shouldRender == XR_TRUE && KnownTitle::FramePace() == 1) {
+                std::unique_lock lock{slot_mutex};
+                const auto waited = WaitForLateFrame(
+                    frame_ready, lock, woke, last_delivery, refresh_rate, late_wait_ms, [this] {
+                        return latest >= 0 && slots[latest].state == Slot::State::Ready;
+                    });
+                lock.unlock();
+                taken = TakeFrame();
+                if (taken >= 0) {
+                    ++late_frames;
+                } else if (waited == LateFrameResult::TimedOut) {
+                    ++late_waits_missed;
+                }
+            }
+            if (const s32 index = taken; index >= 0) {
                 const auto started = Clock::now();
                 bool blank = false;
                 const bool copied = CopyFrame(static_cast<u32>(index), blank);
@@ -2512,6 +2543,12 @@ struct OpenXrHost::Impl {
                  correction_samples != 0 ? correction / static_cast<float>(correction_samples)
                                          : 0.0f,
                  correction_worst);
+        if (late_frames != 0 || late_waits_missed != 0) {
+            LOG_INFO(Core_Vr,
+                     "Headset: {} frames that came a little late were still shown in time, "
+                     "{} waits for one ended without it",
+                     late_frames, late_waits_missed);
+        }
         if ((has_hand_tracking || (use_grips && actions_ready)) && !controllers_used) {
             const float held = pad_samples != 0 ? 1.0f / static_cast<float>(pad_samples) : 0.0f;
             LOG_INFO(Core_Vr,
@@ -2572,6 +2609,8 @@ struct OpenXrHost::Impl {
         reported_delivered = delivered_frames.load(std::memory_order_relaxed);
         display_frames = 0;
         copied_frames = 0;
+        late_frames = 0;
+        late_waits_missed = 0;
         head_tracked_frames = 0;
         palm_samples = 0;
         palm_distance = 0.0f;
@@ -2881,6 +2920,7 @@ void OpenXrHost::EndFrame(u32 index, const PresentedFrame& info, u64 ready_tick)
         }
     }
     impl->last_delivery = now;
+    impl->frame_ready.Notify();
 }
 
 void OpenXrHost::DropFrame(u32 index) {

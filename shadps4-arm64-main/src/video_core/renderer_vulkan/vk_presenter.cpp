@@ -1216,7 +1216,18 @@ HmdFrames Presenter::PrepareHmdFrame(std::span<const AmdGpu::Image, 2> eye_textu
     Frame* const local = exported ? nullptr : vr_exporter->AcquireLocal(eye_width * 2, eye_height);
     if (!exported) {
         expected_ratio = crop ? std::nullopt : std::optional{desktop_aspect};
-        frame = GetRenderFrame();
+        // The window shows what a headset of this machine's own is given at most 60 times a
+        // second, however fast that refreshes (SHADPS4_VR_WINDOW_FPS=<rate>, 0 for never): at 90
+        // or 120 Hz the picture drawn for it is GPU work the headset does not get. Without a
+        // headset the window has every frame. After evertec82/AstroQuest.
+        static const double window_fps = [] {
+            const char* value = std::getenv("SHADPS4_VR_WINDOW_FPS");
+            const double rate = value != nullptr ? std::atof(value) : 60.0;
+            return std::isfinite(rate) ? std::clamp(rate, 0.0, 1000.0) : 60.0;
+        }();
+        if (mirror_limiter.Due(std::chrono::steady_clock::now(), local != nullptr, window_fps)) {
+            frame = GetRenderFrame();
+        }
         if (!frame && !local) {
             return {};
         }

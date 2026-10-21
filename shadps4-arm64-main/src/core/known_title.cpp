@@ -617,7 +617,16 @@ private:
             pace_patience = FirstPacePatience;
         }
 
-        if (taken > slot * (1.0 + Over)) {
+        // A GPU that hardly rests is what holds frames up, and a smaller picture helps; one that
+        // rests for long is not, and a smaller picture would change nothing.
+        const bool gpu_short = load > GpuShort;
+        // Frames held to a pace whatever they take (a frame for every refresh, the PC's
+        // fps=full) that do not fit it for want of processor time say nothing against a larger
+        // picture: the size goes on following what the GPU takes, below, as it does where frames
+        // fit. (Without that a PC whose frames take 12 ms at 90 Hz stayed at the size it started
+        // with, the GPU busy a quarter of the time.)
+        const bool own_pace_with_gpu_room = fixed_pace != 0 && sized && !gpu_short;
+        if (taken > slot * (1.0 + Over) && !own_pace_with_gpu_room) {
             // Frames do not fit the refreshes they are given: the title is on its own pace.
             faster_windows = 0;
             up_windows = 0;
@@ -625,9 +634,6 @@ private:
             if (tight_windows < 2 || since_change < SettleDown) {
                 return;
             }
-            // A GPU that hardly rests is what holds frames up, and a smaller picture helps;
-            // one that rests for long is not, and a smaller picture would change nothing.
-            const bool gpu_short = load > GpuShort;
             const auto slower = [&](s32 to) {
                 if (now - went_faster < PaceRegret) {
                     // The faster pace was a mistake: the next try waits longer, and where the

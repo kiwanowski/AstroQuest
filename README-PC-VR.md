@@ -16,9 +16,10 @@ runtime is the PC's active one.
    select **Set SteamVR as OpenXR Runtime**. The launcher uses the active runtime without
    changing it. An `XR_RUNTIME_JSON` environment variable overrides that selection; remove
    a Virtual Desktop or simulator override before launching with SteamVR.
-2. Set the Index refresh rate to **120 Hz** in SteamVR's Video settings. Keep `fps=60`
-   in `pc-vr\settings.txt` for the console's frame rate. At 90 Hz the default runs at 45
-   frames a second, at 80 Hz at 40, and at 144 Hz at 48.
+2. Choose the Index refresh rate in SteamVR's Video settings. The game makes a frame for
+   every refresh by default (`fps=full`, "Full" in the launcher's window), as many as the PC
+   can: 90 at 90 Hz. With a limit instead (`fps=60`), a frame lasts a whole number of
+   refreshes: 120 Hz gives the console's 60, 90 Hz 45, 80 Hz 40, 144 Hz 48.
 3. Connect the **DualSense to the PC** by USB or Bluetooth. Buttons, touchpad, gyro,
    rumble and light bar use the existing gamepad path. If you add a Steam shortcut, disable
    **Steam Input for that shortcut** so Steam does not replace it with a virtual Xbox pad.
@@ -52,8 +53,8 @@ the PSVR default until the next game start; legacy caches without an identity ar
 The second way to play (the first, the app that runs on the headset itself, is in
 `README-QUEST-VR.md`): the emulator runs on this PC, and the picture goes to the Quest 3 the
 way any PC VR game does, through Virtual Desktop. The PC has far more to give than the
-headset: the game runs at the console's own 60 frames a second with the console's
-multisampling, and draws far larger than the console ever did: 2880x3072 an eye by default,
+headset: the game makes a frame for every refresh of the headset where the PC keeps up (or
+the console's own 60 frames a second, by the setting), with the console's multisampling, and draws far larger than the console ever did: 2880x3072 an eye by default,
 four times the pixels of its largest size (1440x1536, what a PlayStation 4 Pro uses), chosen
 in a small window at every start.
 
@@ -75,8 +76,10 @@ in a small window at every start.
    not), with its own OpenXR runtime, VDXR, as the PC's OpenXR runtime (Streamer window,
    Options). It is, on this PC.
 3. In the headset, start **Virtual Desktop** and connect to the PC. In its Streaming settings
-   the frame rate to pick is **120**: the game then draws 60 frames a second and each is
-   shown for two refreshes, as on a PlayStation VR. (At 90 it draws 45, at 72 36: see "Speed".)
+   pick the frame rate, **90** or **120**: the game draws a new frame for every refresh, as
+   many as the PC can make ("Full" in the launcher's window, the default). If that judders,
+   choose 60 frames a second there with 120 here: each frame is then shown for two refreshes,
+   as on a PlayStation VR. (See "Speed".)
 4. On the desktop you now see in the headset, start **`Play Astro Bot VR.bat`** (in this
    folder). It looks for the game in the `games` folder next to it, up to three folders
    down: an unpacked game (a folder with `eboot.bin` in it) or a `.pkg` package, which it
@@ -84,7 +87,7 @@ in a small window at every start.
    from a dump can be unpacked, not an encrypted one from the PlayStation Store). When it
    finds neither, a window asks where the game is, and what is chosen there is kept as
    `game=` in the settings. A small window comes up next: the **resolution** of each eye (a slider, from the
-   console's 1440x1536 up to 3600x3840), the **most frames a second**, the **language of the
+   console's 1440x1536 up to 4320x4608), the **frames a second** (Full, or a limit), the **language of the
    game** (Windows' own, or one of the game's 28), and the **field of
    view**; Play starts the game with them (they are kept in `pc-vr\settings.txt`; untick "Show
    this window at every start" to go without it). A console window then says what is found
@@ -139,7 +142,9 @@ In the game:
     pull, let go. It also pulls on the hook's rope.
 
   The game has no use for these buttons while it is played, and is still told of them (a few
-  of its menus have). Besides them, the right stick is a finger on the pad, for anything
+  of its menus have). **R1 swipes forward on a DualSense too** (issue #43): the throwing stars
+  of the last boss want swipes faster than a thumb makes them on the pad. A finger on the pad
+  comes first. Besides them, the right stick is a finger on the pad, for anything
   else: it comes down behind the pad's middle, is dragged the way the stick is pushed, and
   lifts where the stick was let go; the Back / View button presses the pad. The right stick
   does that with a DualSense as well while nothing touches its pad. (A stick that drifts,
@@ -301,12 +306,13 @@ is optional.
 
 | Setting | Meaning |
 | --- | --- |
-| `resolution=2880` | the width of each eye's picture: `816`, `960`, `1200` (the console's smaller sizes, kept to: for a headset with fewer pixels, such as a Rift S), `1440` (the console's largest), `1800`, `2160`, `2520`, `2880` (default), `3240`, `3600`; or `game` for the console's sizes chosen by the game. From `1440` up the game draws a step smaller by itself while the graphics card falls behind |
+| `resolution=2880` | the width of each eye's picture: `816`, `960`, `1200` (the console's smaller sizes, kept to: for a headset with fewer pixels, such as a Rift S), `1440` (the console's largest), `1800`, `2160`, `2520`, `2880` (default), `3240`, `3600`, `3960`, `4320`; or `game` for the console's sizes chosen by the game. From `1440` up the game draws a step smaller by itself while the graphics card falls behind |
 | `dynamic=0` | hold the game to the chosen size even where the graphics card falls behind |
-| `fps=60` | the most frames a second: `120`, `90`, `80`, `72`, `60` (default), `45`, `40`, `36`, `30`; what the headset's refresh rate allows (see "Speed"; `80` for a Rift S at its 80 Hz) |
+| `fps=full` | `full` (default): a new frame for every refresh of the headset, as many as the PC can make; or the most frames a second: `120`, `90`, `80`, `72`, `60`, `45`, `40`, `36`, `30`, what the headset's refresh rate allows (see "Speed"; `80` for a Rift S at its 80 Hz) |
 | `fov=100` | how much of the headset's field of view the game draws, 70 to 100 percent: 100 fills all of it; less puts the same pixels over fewer degrees, sharper, with a dark border |
 | `fov_of=psvr` | `fov` is a percent of a PlayStation VR's field of view (100 by 103 degrees an eye, what the game was made for) instead of the headset's own (`fov_of=headset`, the default) |
 | `menu=0` | no window with the main settings at the start |
+| `update_check=0` | the launcher does not ask GitHub whether a newer release is out (it asks once at every start, and says so in its window when there is one) |
 | `desktop_view=spectator` | one complete eye on the monitor; `combined` adds the other eye's peripheral strip; default `stereo` keeps both eyes side by side. Does not change the headset view |
 | `desktop_crop=1` | scale Single eye or Combined eyes to the desktop width, cropping the top/bottom if needed; default `0` preserves the complete image. Stereo and headset output are unchanged |
 | `sharpen=0.3` | sharpening of the picture on its way out, 0 to 1. Virtual Desktop has its own on top |
@@ -346,8 +352,8 @@ has the 14 rescued bots.
 
 | | PlayStation 4 | Quest 3 on its own (app 0.7) | PC through Virtual Desktop |
 | --- | --- | --- | --- |
-| Frames a second | 60 | 30 in the levels, 45 in light scenes | 60 (at 120 Hz), up to 120 by the setting |
-| Scene size per eye | 960x1080 to 1440x1536 | 816x870 to 1200x1280 | up to 2880x3072 (default), 3600x3840 at most |
+| Frames a second | 60 | 30 in the levels, 45 in light scenes | the headset's refresh rate (90 at 90 Hz) where the PC keeps up, or 60 at 120 Hz by the setting |
+| Scene size per eye | 960x1080 to 1440x1536 | 816x870 to 1200x1280 | up to 2880x3072 (default), 4320x4608 at most |
 | Edges | multisampled | smoothed by a filter | multisampled |
 | Head movement | 120 Hz, reprojected | 90 Hz, reprojected | the stream's rate, reprojected in the headset |
 | Field of view per eye | PlayStation VR's, 100 by 103 degrees | PlayStation VR's (85% of it from app 0.9 on) | the headset's own, all of it (the simulated Quest 3: 94 by 99 degrees) |
@@ -387,18 +393,21 @@ for 60 pictures a second or fewer (a 60 Hz stream, or Virtual Desktop's Synchron
 making up every other picture itself), the game is given one refresh for a frame instead of
 two, which keeps it at 60.
 
-**More than 60 frames a second** (`fps` above 60): the game may draw a frame for every picture of
-the headset. A frame takes this PC 9 to 11 ms whatever the scene (it is the emulator's
-processor work that takes the time; the graphics card is busy 13% of it), so 72, 80 and
-90 Hz are within reach and 120 is not: there the emulator tries once, finds that frames do
-not fit, and stays with every other picture (it tries again every ten minutes; a try is a
-few seconds of uneven frames). With the simulated headset at 90 Hz the walk through the
-first level held 90 frames a second throughout. The same scripted walk, played at 60 and at
-90 frames a second (`tools/pc-rate-compare.sh`), does the same things at the same moments:
-the game's own time step follows the frame rate. What does not are the few things the game
-counts in frames: an animated sign in the level runs half as fast again at 90. That, and
-that nothing but the first level was compared, is why it is a setting and not the way
-things are: 120 Hz with the game's own 60 frames is what the game was made for.
+**More than 60 frames a second** (`fps=full`, the default since 0.23, or `fps` above 60): the
+game draws a frame for every picture of the headset where it can. With `full` the pace stays
+at one refresh a frame whatever happens (only the size of the picture follows the graphics
+card), as evertec82's fork has it, which players found smoother than 60 frames shown twice
+each; with a number above 60 the emulator falls back to every other picture where frames do
+not fit, and tries again later (every ten minutes; a try is a few seconds of uneven frames).
+A frame takes this PC 9 to 11 ms whatever the scene (it is the emulator's processor work that
+takes the time; the graphics card is busy 13% of it), so 72, 80 and 90 Hz are within reach and
+120 is not: at 120 Hz with `full`, frames come every one or two refreshes as they fall, which
+judders; `fps=60` (60 at 120 Hz in the window) is steady there. With the simulated headset at
+90 Hz the walk through the first level held 90 frames a second throughout. The same scripted
+walk, played at 60 and at 90 frames a second (`tools/pc-rate-compare.sh`), does the same things
+at the same moments: the game's own time step follows the frame rate. What does not are the
+few things the game counts in frames: an animated sign in the level runs half as fast again at
+90, and the soccer robots of 2-2 had to be taught the console's frames (0.22).
 
 **Hitches**: in play the longest wait for a frame is 20 to 25 ms (a frame is 16.7); where
 scenes change (the title, the map, a level loading) single waits of 50 to 235 ms happen, six
@@ -477,6 +486,48 @@ Things that had to be right, for whoever works on this again:
   Desktop has its own only while it streams to the headset, and names the PC's until then.
   Every port plays on a device of its own, never on "the default device" as such (see
   "Fixed and added in 0.19").
+
+## Fixed and added in 0.23 (2026-10-21)
+
+From [evertec82's fork](https://github.com/evertec82/AstroQuest) (issue #30), which players
+found to run better on strong PCs:
+
+- **The white lines across the title and the ragged letters on NVIDIA cards.** The game
+  draws into pictures of one colour sample with a depth buffer of several, which NVIDIA's
+  driver keeps; there a pixel on the edge two triangles of a quad share was blended by both,
+  and every glowing or see-through quad (the title's light, the sky's cloud sheets) showed a
+  thin bright line along its diagonal, in each eye at its own place. Such draws now give each
+  colour sample to one triangle only (VK_NV_coverage_reduction_mode). And the values a pixel
+  shader reads were taken at the pixel's middle where the console takes them inside the
+  triangle (its centroid) or at each sample: at the edges of letters that read the font's
+  picture outside the letter, the speckled outlines of the menus' texts.
+- **A frame for every refresh, the new default** (`fps=full`, "Full" in the launcher's
+  window): the game draws as many frames as the headset shows, and is never put back to a
+  frame every other refresh, which players found judders more than an odd late frame. Only the
+  size of the picture follows the graphics card; a PC whose frames take longer than a refresh
+  for want of processor time still grows to the size it was given, as long as the GPU has
+  room. `fps=60` at 120 Hz is the console's own pace, as before. On this PC (Ryzen 7 9800X3D,
+  RTX 5070 Ti) with the simulated headset: the title held 90 frames a second at 90 Hz and 119
+  at 120 Hz, the way into the first level 112 to 117 at 120 Hz, all at 2880x3072 an eye.
+- **Frames flipped sooner**: the emulator looks for a finished frame 32 times a refresh with a
+  high-resolution timer instead of 8 times with the ordinary one, and waits up to 3 ms for a
+  frame that is a little late instead of showing the last one again (the `Headset:` line says
+  how many came in time that way; `SHADPS4_XR_LATE_WAIT_MS=0` for none,
+  `SHADPS4_VR_PRECISE_PACING=0` for the old looks).
+- **The window on the PC shows the headset's picture 60 times a second at most**
+  (`SHADPS4_VR_WINDOW_FPS`), which at 90 or 120 Hz is GPU work the headset does not need.
+- **Two larger sizes**, 3960x4224 and 4320x4608 an eye.
+
+And besides:
+
+- **R1 swipes forward on a DualSense too** (issue #43), for the throwing stars of the last
+  boss: faster than a thumb on the pad. A finger on the pad comes first.
+- **The launcher says when a newer release is out** (issue #41): it asks GitHub once as it
+  starts and prints a line with the link (`update_check=0` for not at all).
+- **A crash in the game's own code says where** (issue #40): the log now names the place in
+  the game (`eboot.bin + 0x...`), what was read or written where, the registers, and the
+  game's calls on the stack. (The crash in the intro of issue #40 is in the game's animation
+  code, and not reproduced here.)
 
 ## Fixed and added in 0.22 (2026-10-19)
 
@@ -629,8 +680,7 @@ NVIDIA card.
    `"enableLinuxVulkanAsync" : true` to the `"steamvr"` section of
    `~/.local/share/Steam/config/steamvr.vrsettings` (under `~/.var/app/com.valvesoftware.Steam/`
    for Steam from Flatpak). Its log (`logs/vrcompositor.txt` next to `config`) then says
-   `Enabling async support!`. Set the refresh rate as for the Index above: 120 Hz for the
-   game's 60 frames a second.
+   `Enabling async support!`. Set the refresh rate as for the Index above.
 3. Make SteamVR the OpenXR runtime (SteamVR's Settings > OpenXR), and the headset's
    speakers and microphone the system's default devices: the emulator plays to the default
    output.
